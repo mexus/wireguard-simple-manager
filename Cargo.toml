@@ -23,3 +23,4 @@ zeroize = { version = "1.8.1", features = ["zeroize_derive"] }
 tempfile = "3.10.1"
 display-error-chain = "0.2.0"
 time = "0.3.36"
+humantime = "2.1.0"

@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, time::Duration};
 
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
@@ -135,14 +135,11 @@ fn run() -> Result<(), snafu::Whatever> {
             for (key, peer) in &host.peers {
                 let key = PublicKey::from(key);
                 if let Some(meta) = peers_meta.peer(&key) {
-                    let last_handshake = peer.last_handshake.map(time::OffsetDateTime::from);
-                    tracing::info!(
-                        "{key}, {} ({:?}), ip: {:?}, last handshake: {:?}",
-                        meta.name,
-                        meta.comment,
-                        meta.ip,
-                        last_handshake
-                    );
+                    let display_data = PeerListData {
+                        wg_peer: peer,
+                        peer_meta: meta,
+                    };
+                    tracing::info!("{display_data}");
                 }
             }
         }
@@ -305,4 +302,48 @@ PersistentKeepalive = 25
     }
 
     Ok(())
+}
+
+struct PeerListData<'a> {
+    wg_peer: &'a defguard_wireguard_rs::host::Peer,
+    peer_meta: &'a PeerMeta,
+}
+
+impl std::fmt::Display for PeerListData<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const IDENT: &str = "  ";
+        let key = &self.peer_meta.public_key;
+        let name = &self.peer_meta.name;
+        let ip = &self.peer_meta.ip;
+        let last_handshake = self.wg_peer.last_handshake.map(time::OffsetDateTime::from);
+
+        write!(
+            f,
+            "Client key: {key}\n\
+             {IDENT}Name: {name}"
+        )?;
+        if let Some(comment) = &self.peer_meta.comment {
+            write!(f, " ({comment})")?;
+        }
+        write!(
+            f,
+            "\n\
+             {IDENT}Ip: {ip}"
+        )?;
+        if let Some(last_handshake) = last_handshake {
+            let now = time::OffsetDateTime::now_utc();
+            let elapsed = humantime::Duration::from(Duration::from_secs(
+                (now - last_handshake).unsigned_abs().as_secs(),
+            ));
+
+            write!(
+                f,
+                "\n\
+                 {IDENT}Last handshake: {elapsed} ago \
+                 at {last_handshake}"
+            )?;
+        }
+
+        Ok(())
+    }
 }
