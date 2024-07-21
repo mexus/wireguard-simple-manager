@@ -86,7 +86,7 @@ fn run() -> Result<(), snafu::Whatever> {
     tracing::debug!("Loaded config:\n{config:#?}");
 
     let mut meta =
-        PeersMeta::load(&config.meta).whatever_context("Can't load meta information file")?;
+        PeersMeta::load(&config.peers).whatever_context("Can't load meta information file")?;
 
     tracing::debug!("Loaded peers meta:\n{meta:#?}");
 

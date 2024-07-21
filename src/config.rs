@@ -16,7 +16,7 @@ pub struct Config {
     pub external_port: u32,
 
     /// Path to the peers meta information.
-    pub meta: Utf8PathBuf,
+    pub peers: Utf8PathBuf,
 
     /// Name of the wireguard interface.
     #[serde(rename = "interface")]
