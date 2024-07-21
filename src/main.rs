@@ -32,8 +32,8 @@ enum Commands {
         name: String,
         /// Comment.
         comment: Option<String>,
-        /// IP address mask.
-        #[clap(value_parser = parse_ip_mask)]
+        /// Desired IP address.
+        #[clap(long)]
         ip: Option<IpAddr>,
         /// Output file name where peer information is stored. If not provided,
         /// the file name is derived from the network name and client's name.
@@ -269,6 +269,10 @@ fn run() -> Result<(), snafu::Whatever> {
                     check_ip(ip, &config.network_mask),
                     "The provided IP address doesn't match the network"
                 );
+
+                if let Some(existing_peer) = meta.peer_by_ip(ip) {
+                    snafu::whatever!("Peer with {ip} address already exists:\n{existing_peer}");
+                }
                 ip
             } else {
                 let last_ip = meta.last_ip().unwrap_or(config.network_mask.ip);
@@ -291,8 +295,12 @@ fn run() -> Result<(), snafu::Whatever> {
 
             use std::fmt::Write as _;
             let mut peer_config_file = String::new();
-            writeln!(peer_config_file, "#{}\n# {name}", config.name)
-                .expect("Write to string doesn't fail");
+            writeln!(
+                peer_config_file,
+                "# VPN {}\n# Peer name: {name}",
+                config.name
+            )
+            .expect("Write to string doesn't fail");
             if let Some(comment) = &comment {
                 writeln!(peer_config_file, "{comment}").expect("Write to string doesn't fail");
             }

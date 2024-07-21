@@ -156,4 +156,9 @@ impl PeersMeta {
     pub fn last_ip(&self) -> Option<IpAddr> {
         self.inner.values().map(|peer| peer.ip).max()
     }
+
+    /// Finds a peer by IP address.
+    pub fn peer_by_ip(&self, ip: IpAddr) -> Option<&PeerMeta> {
+        self.inner.values().find(|peer| peer.ip == ip)
+    }
 }
