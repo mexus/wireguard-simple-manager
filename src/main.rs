@@ -4,8 +4,9 @@ use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use display_error_chain::DisplayErrorChain;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt};
 use wireguard_simple_manager::{
+    config::Config,
     ip_utils::{check_ip, next_ip},
     peers_meta::{PeerMeta, PeersMeta},
     wg_key::{PresharedKey, PrivateKey, PublicKey},
@@ -62,93 +63,6 @@ enum Commands {
 #[test]
 fn check_args() {
     <Args as clap::CommandFactory>::command().debug_assert();
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct Config {
-    /// Name of the network.
-    name: String,
-
-    /// External VPN IP or DNS address.
-    external_address: String,
-
-    /// External VPN port.
-    external_port: u32,
-
-    /// Path to the peers meta information.
-    meta: Utf8PathBuf,
-
-    /// Name of the wireguard interface.
-    #[serde(rename = "interface")]
-    interface_name: String,
-
-    /// VPN network mask.
-    #[serde(with = "serde_ip_addr_mask")]
-    network_mask: IpAddrMask,
-}
-
-#[derive(PartialEq, Eq)]
-#[repr(transparent)]
-struct WgKey(defguard_wireguard_rs::key::Key);
-
-impl std::str::FromStr for WgKey {
-    type Err = base64_21::DecodeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        defguard_wireguard_rs::key::Key::try_from(s).map(WgKey)
-    }
-}
-
-impl std::hash::Hash for WgKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
-impl<'a> From<&'a defguard_wireguard_rs::key::Key> for &'a WgKey {
-    fn from(value: &'a defguard_wireguard_rs::key::Key) -> Self {
-        // It is safe because of the repr(transparent).
-        unsafe { std::mem::transmute(value) }
-    }
-}
-
-impl std::borrow::Borrow<defguard_wireguard_rs::key::Key> for WgKey {
-    fn borrow(&self) -> &defguard_wireguard_rs::key::Key {
-        &self.0
-    }
-}
-
-impl std::fmt::Debug for WgKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self.0, f)
-    }
-}
-
-impl std::fmt::Display for WgKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl serde::Serialize for WgKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.0.to_string())
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for WgKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let key = String::deserialize(deserializer)?;
-        let key = defguard_wireguard_rs::key::Key::try_from(key.as_str())
-            .map_err(<D::Error as serde::de::Error>::custom)?;
-        Ok(Self(key))
-    }
 }
 
 #[snafu::report]
@@ -388,96 +302,4 @@ PersistentKeepalive = 25
     }
 
     Ok(())
-}
-
-#[derive(Debug, Snafu)]
-enum ParseIpMaskError {
-    /// The IP part is missing.
-    #[snafu(display("The IP part is missing"))]
-    MissingIp,
-
-    /// Unable to parse the IP part.
-    #[snafu(display("Unable to parse the IP part: {ip:?}"))]
-    ParseIp {
-        /// The stringified IP.
-        ip: String,
-        /// Source error.
-        source: std::net::AddrParseError,
-    },
-
-    /// Unable to parse the CIDR part.
-    #[snafu(display("Unable to parse the CIDR part: {cidr:?}"))]
-    ParseCidr {
-        /// The stringified cidr.
-        cidr: String,
-        /// Source error.
-        source: std::num::ParseIntError,
-    },
-}
-
-fn parse_ip_mask(input: &str) -> Result<IpAddrMask, ParseIpMaskError> {
-    let mut parts = input.split('/');
-
-    let ip = parts.next().context(MissingIpSnafu)?;
-
-    let ip: std::net::IpAddr = ip.parse().context(ParseIpSnafu { ip })?;
-
-    let cidr: u8 = parts
-        .next()
-        .map(|cidr| cidr.parse().context(ParseCidrSnafu { cidr }))
-        .unwrap_or_else(|| Ok(if ip.is_ipv4() { 32 } else { 128 }))?;
-
-    Ok(IpAddrMask { cidr, ip })
-}
-
-mod serde_ip_addr_mask {
-    use defguard_wireguard_rs::net::IpAddrMask;
-    // use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
-    use serde::{de::Error as _, Deserialize, Deserializer};
-
-    // /// Serializes the ip address with a mask.
-    // pub fn serialize<S>(ip_mask: &IpAddrMask, serializer: S) -> Result<S::Ok, S::Error>
-    // where
-    //     S: Serializer,
-    // {
-    //     let stringified = ip_mask.to_string();
-    //     stringified.serialize(serializer)
-    // }
-
-    /// Deserializes an ip address with a mask.
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IpAddrMask, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let stringified = String::deserialize(deserializer)?;
-        super::parse_ip_mask(&stringified)
-            .map_err(|e| format!("Parse {stringified:?}: {e}"))
-            .map_err(D::Error::custom)
-    }
-    // /// Serializes the ip address with a mask.
-    // pub fn serialize<S>(ip_mask: &[IpAddrMask], serializer: S) -> Result<S::Ok, S::Error>
-    // where
-    //     S: Serializer,
-    // {
-    //     let stringified = ip_mask.iter().map(|ip| ip.to_string()).collect::<Vec<_>>();
-    //     stringified.serialize(serializer)
-    // }
-
-    // /// Deserializes an ip address with a mask.
-    // pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<IpAddrMask>, D::Error>
-    // where
-    //     D: Deserializer<'de>,
-    // {
-    //     let stringified = Vec::<String>::deserialize(deserializer)?;
-    //     let mut output = vec![];
-    //     for stringified in stringified {
-    //         output.push(
-    //             super::parse_ip_mask(&stringified)
-    //                 .map_err(|e| format!("Parse {stringified:?}: {e}"))
-    //                 .map_err(D::Error::custom)?,
-    //         );
-    //     }
-
-    //     Ok(output)
-    // }
 }
