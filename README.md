@@ -57,3 +57,15 @@ ip = "10.17.0.2"
 ```
 
 For manipulations with the peers please refer to the built-in help.
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+Some Crossbeam subcrates have additional licensing notices.
+Take a look at other readme files in this repository for more information.
