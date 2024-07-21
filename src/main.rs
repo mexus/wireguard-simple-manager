@@ -1,4 +1,4 @@
-use std::{net::IpAddr, time::Duration};
+use std::{net::IpAddr, os::unix::fs::OpenOptionsExt, time::Duration};
 
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
@@ -168,6 +168,7 @@ fn run() -> Result<(), snafu::Whatever> {
                 let output_path = output
                     .unwrap_or_else(|| Utf8PathBuf::from(format!("{}_{name}.conf", config.name)));
                 output_file = std::fs::OpenOptions::new()
+                    .mode(0o400)
                     .write(true)
                     .create_new(true)
                     .open(output_path)
@@ -213,7 +214,11 @@ fn run() -> Result<(), snafu::Whatever> {
             )
             .expect("Write to string doesn't fail");
             if let Some(comment) = &comment {
-                writeln!(peer_config_file, "{comment}").expect("Write to string doesn't fail");
+                for comment_line in comment.lines() {
+                    let comment_line = comment_line.trim();
+                    writeln!(peer_config_file, "# {comment_line}")
+                        .expect("Write to string doesn't fail");
+                }
             }
 
             write!(
@@ -247,7 +252,7 @@ PersistentKeepalive = 25
             let wg_peer = defguard_wireguard_rs::host::Peer {
                 public_key: public_key.into(),
                 preshared_key: Some(preshared_key.clone().into()),
-                allowed_ips: vec![IpAddrMask::new(ip, config.network_mask.cidr)],
+                allowed_ips: vec![IpAddrMask::new(ip, 32)],
                 ..Default::default()
             };
 

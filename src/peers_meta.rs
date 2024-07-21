@@ -1,6 +1,6 @@
 //! Peers meta information.
 
-use std::{io::Write, net::IpAddr};
+use std::{borrow::Cow, io::Write, net::IpAddr};
 
 use camino::Utf8PathBuf;
 use indexmap::IndexMap;
@@ -99,6 +99,37 @@ pub enum SaveError {
     },
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+struct PeerMetaShort<'a> {
+    /// Full name.
+    name: Cow<'a, str>,
+    /// Optional comment.
+    comment: Option<Cow<'a, str>>,
+    /// Peer's IP address.
+    ip: IpAddr,
+}
+
+impl<'a> PeerMetaShort<'a> {
+    fn full(self, key: PublicKey) -> PeerMeta {
+        PeerMeta {
+            public_key: key,
+            name: self.name.into_owned(),
+            comment: self.comment.map(Cow::into_owned),
+            ip: self.ip,
+        }
+    }
+}
+
+impl<'a> From<&'a PeerMeta> for PeerMetaShort<'a> {
+    fn from(value: &'a PeerMeta) -> Self {
+        PeerMetaShort {
+            name: Cow::Borrowed(&value.name),
+            comment: value.comment.as_deref().map(Cow::Borrowed),
+            ip: value.ip,
+        }
+    }
+}
+
 #[derive(Debug, Snafu)]
 #[snafu(display("The peer already exists"))]
 #[non_exhaustive]
@@ -112,7 +143,14 @@ impl PeersMeta {
     {
         let path = path.into();
         let data = std::fs::read_to_string(&path)?;
-        let inner: IndexMap<PublicKey, PeerMeta> = toml::from_str(&data)?;
+
+        let inner: IndexMap<PublicKey, PeerMetaShort> = toml::from_str(&data)?;
+
+        let inner = inner
+            .into_iter()
+            .map(|(key, short)| (key, short.full(key)))
+            .collect();
+
         Ok(Self { inner, path })
     }
 
@@ -121,7 +159,13 @@ impl PeersMeta {
         let parent = self.path.parent().expect("Must be a file");
         let mut tmp =
             tempfile::NamedTempFile::new_in(parent).context(CreateTempSnafu { parent })?;
-        let serialized = toml::to_string_pretty(&self.inner).expect("Serialization must not fail");
+
+        let inner_short = self
+            .inner
+            .iter()
+            .map(|(key, meta)| (*key, PeerMetaShort::from(meta)))
+            .collect::<IndexMap<_, _>>();
+        let serialized = toml::to_string_pretty(&inner_short).expect("Serialization must not fail");
         tmp.write_all(serialized.as_bytes())
             .context(StoreToTempSnafu)?;
         tmp.persist(&self.path)
