@@ -85,10 +85,10 @@ fn run() -> Result<(), snafu::Whatever> {
     };
     tracing::debug!("Loaded config:\n{config:#?}");
 
-    let mut meta =
+    let mut peers_meta =
         PeersMeta::load(&config.peers).whatever_context("Can't load meta information file")?;
 
-    tracing::debug!("Loaded peers meta:\n{meta:#?}");
+    tracing::debug!("Loaded peers meta:\n{peers_meta}");
 
     let api = defguard_wireguard_rs::WGApi::new(config.interface_name, false)
         .whatever_context("Can't init wireguard API")?;
@@ -98,7 +98,7 @@ fn run() -> Result<(), snafu::Whatever> {
 
     for (key, peer) in &host.peers {
         let key = PublicKey::from(key);
-        if let Some(meta) = meta.peer(&key) {
+        if let Some(meta) = peers_meta.peer(&key) {
             let ip = meta.ip;
             let ip_match = peer
                 .allowed_ips
@@ -120,7 +120,7 @@ fn run() -> Result<(), snafu::Whatever> {
         }
     }
 
-    for peer in meta.peers() {
+    for peer in peers_meta.peers() {
         let key = peer.public_key.into();
         if !host.peers.contains_key(&key) {
             tracing::warn!(
@@ -134,7 +134,7 @@ fn run() -> Result<(), snafu::Whatever> {
         Commands::ListPeers => {
             for (key, peer) in &host.peers {
                 let key = PublicKey::from(key);
-                if let Some(meta) = meta.peer(&key) {
+                if let Some(meta) = peers_meta.peer(&key) {
                     let last_handshake = peer.last_handshake.map(time::OffsetDateTime::from);
                     tracing::info!(
                         "{key}, {} ({:?}), ip: {:?}, last handshake: {:?}",
@@ -184,12 +184,12 @@ fn run() -> Result<(), snafu::Whatever> {
                     "The provided IP address doesn't match the network"
                 );
 
-                if let Some(existing_peer) = meta.peer_by_ip(ip) {
+                if let Some(existing_peer) = peers_meta.peer_by_ip(ip) {
                     snafu::whatever!("Peer with {ip} address already exists:\n{existing_peer}");
                 }
                 ip
             } else {
-                let last_ip = meta.last_ip().unwrap_or(config.network_mask.ip);
+                let last_ip = peers_meta.last_ip().unwrap_or(config.network_mask.ip);
                 next_ip(last_ip, &config.network_mask)
                     .whatever_context("Can't calculate next IP")?
             };
@@ -243,7 +243,8 @@ PersistentKeepalive = 25
                 public_key,
             };
 
-            meta.add_peer(new_peer)
+            peers_meta
+                .add_peer(new_peer)
                 .whatever_context("Adding a new peer")?;
 
             let wg_peer = defguard_wireguard_rs::host::Peer {
@@ -257,7 +258,7 @@ PersistentKeepalive = 25
                 api.configure_peer(&wg_peer)
                     .whatever_context("Can't add the WG peer")?;
 
-                if let Err(e) = meta.save().whatever_context("Save meta information") {
+                if let Err(e) = peers_meta.save().whatever_context("Save meta information") {
                     tracing::warn!(
                         "Unable to save the meta. \
                      Remove the peer from the wireguard"
@@ -286,10 +287,12 @@ PersistentKeepalive = 25
             public_key,
             dry_run,
         } => {
-            if let Some(info) = meta.remove_peer(&public_key) {
+            if let Some(info) = peers_meta.remove_peer(&public_key) {
                 tracing::info!("Removing peer\n{info}");
                 if !dry_run {
-                    meta.save().whatever_context("Save meta information")?;
+                    peers_meta
+                        .save()
+                        .whatever_context("Save meta information")?;
                     api.remove_peer(&public_key.into())
                         .whatever_context("Can't remove the peer from the wireguard")?;
                 }

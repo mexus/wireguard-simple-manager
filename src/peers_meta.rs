@@ -46,6 +46,15 @@ pub struct PeersMeta {
     path: Utf8PathBuf,
 }
 
+impl std::fmt::Display for PeersMeta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for peer in self.peers() {
+            write!(f, "{peer}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Load error.
 #[derive(Debug, Snafu)]
 pub enum LoadError {
