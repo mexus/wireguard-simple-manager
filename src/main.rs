@@ -333,7 +333,7 @@ struct PeerListData<'a> {
 
 impl std::fmt::Display for PeerListData<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        const IDENT: &str = "  ";
+        const IDENT: &str = "┃  ";
         let key = &self.peer_meta.public_key;
         let name = &self.peer_meta.name;
         let ip = &self.peer_meta.ip;
@@ -350,7 +350,7 @@ impl std::fmt::Display for PeerListData<'_> {
             .map(time::OffsetDateTime::from);
         write!(
             f,
-            "Client key: {key}\n\
+            "┏Client key: {key}\n\
              {IDENT}Name: {name}"
         )?;
         if let Some(comment) = &self.peer_meta.comment {
@@ -377,6 +377,7 @@ impl std::fmt::Display for PeerListData<'_> {
                  at {last_handshake}"
             )?;
         }
+        // writeln!(f, "\n┗")?;
 
         Ok(())
     }
