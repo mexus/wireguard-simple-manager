@@ -132,7 +132,15 @@ fn run() -> Result<(), snafu::Whatever> {
 
     match command {
         Commands::ListPeers => {
-            for (key, peer) in &host.peers {
+            let mut peers = host
+                .peers
+                .iter()
+                .map(|(key, peer)| (key, peer))
+                .collect::<Vec<_>>();
+            peers.sort_unstable_by_key(|(_key, peer)| {
+                peer.allowed_ips.first().map(|addr_mask| addr_mask.ip)
+            });
+            for (key, peer) in peers {
                 let key = PublicKey::from(key);
                 if let Some(meta) = peers_meta.peer(&key) {
                     let display_data = PeerListData {
