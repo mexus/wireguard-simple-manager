@@ -18,6 +18,9 @@ pub struct Config {
     /// Path to the peers meta information.
     pub peers: Utf8PathBuf,
 
+    /// Optional DNS server for the network.
+    pub dns: Option<String>,
+
     /// Name of the wireguard interface.
     #[serde(rename = "interface")]
     pub interface_name: String,

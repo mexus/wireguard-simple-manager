@@ -90,7 +90,7 @@ fn run() -> Result<(), snafu::Whatever> {
 
     tracing::debug!("Loaded peers meta:\n{peers_meta}");
 
-    let api = defguard_wireguard_rs::WGApi::new(config.interface_name, false)
+    let api = defguard_wireguard_rs::WGApi::new(config.interface_name.clone(), false)
         .whatever_context("Can't init wireguard API")?;
     let host = api
         .read_interface_data()
@@ -201,49 +201,23 @@ fn run() -> Result<(), snafu::Whatever> {
 
             let preshared_key = PresharedKey::random(&mut rand::rngs::OsRng);
 
-            let endpoint_name = &config.external_address;
-            let endpoint_port = &config.external_port;
-            let network_mask = &config.network_mask;
-
-            use std::fmt::Write as _;
-            let mut peer_config_file = String::new();
-            writeln!(
-                peer_config_file,
-                "# VPN {}\n# Peer name: {name}",
-                config.name
-            )
-            .expect("Write to string doesn't fail");
-            if let Some(comment) = &comment {
-                for comment_line in comment.lines() {
-                    let comment_line = comment_line.trim();
-                    writeln!(peer_config_file, "# {comment_line}")
-                        .expect("Write to string doesn't fail");
-                }
-            }
-
-            write!(
-                peer_config_file,
-                "\
-[Interface]
-Address = {ip}/32
-PrivateKey = {secret_key}
-
-[Peer]
-PublicKey = {host_public_key}
-PresharedKey = {preshared_key}
-AllowedIPs = {network_mask}
-Endpoint = {endpoint_name}:{endpoint_port}
-PersistentKeepalive = 25
-",
-            )
-            .expect("Write to string doesn't fail");
-
             let new_peer = PeerMeta {
-                comment,
-                name,
+                comment: comment.clone(),
+                name: name.clone(),
                 ip,
                 public_key,
             };
+
+            let config_file_printer =
+                wireguard_simple_manager::client_config::ConfigFilePrinter::builder()
+                    .global_config(&config)
+                    .client_name(&name)
+                    .client_comment(comment.as_deref())
+                    .client_secret_key(secret_key)
+                    .preshared_key(Some(preshared_key.clone()))
+                    .ip(ip)
+                    .server_public_key(host_public_key)
+                    .build();
 
             peers_meta
                 .add_peer(new_peer)
@@ -275,13 +249,13 @@ PersistentKeepalive = 25
                 }
             }
 
-            if let Err(e) = output.write_all(peer_config_file.as_bytes()) {
+            if let Err(e) = write!(output, "{config_file_printer}") {
                 let e = DisplayErrorChain::new(e);
                 tracing::error!(
                     "Unable to write peer configuration file: {e}.\n\
                      Print file to stdout instead:\n"
                 );
-                println!("{peer_config_file}");
+                println!("{config_file_printer}");
             }
             tracing::info!("Peer successfully added");
         }

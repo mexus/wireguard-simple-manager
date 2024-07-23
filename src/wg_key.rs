@@ -81,6 +81,16 @@ impl std::fmt::Display for PresharedKey {
 #[repr(transparent)]
 pub struct PublicKey(Key);
 
+impl PublicKey {
+    /// Generates a random public key.
+    #[cfg(test)]
+    pub fn random<R: rand::Rng + ?Sized>(r: &mut R) -> Self {
+        let mut bytes = [0u8; 32];
+        r.fill_bytes(&mut bytes);
+        Self(Key(bytes))
+    }
+}
+
 impl std::fmt::Display for PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self.0, f)
