@@ -377,7 +377,6 @@ impl std::fmt::Display for PeerListData<'_> {
                  at {last_handshake}"
             )?;
         }
-        // writeln!(f, "\n┗")?;
 
         Ok(())
     }
