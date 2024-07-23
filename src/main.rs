@@ -138,16 +138,40 @@ fn run() -> Result<(), snafu::Whatever> {
                 .map(|(key, peer)| (key, peer))
                 .collect::<Vec<_>>();
             peers.sort_unstable_by_key(|(_key, peer)| {
-                peer.allowed_ips.first().map(|addr_mask| addr_mask.ip)
+                (
+                    !peer_is_active(peer),
+                    peer.allowed_ips.first().map(|addr_mask| addr_mask.ip),
+                )
             });
-            for (key, peer) in peers {
-                let key = PublicKey::from(key);
-                if let Some(meta) = peers_meta.peer(&key) {
-                    let display_data = PeerListData {
-                        wg_peer: peer,
-                        peer_meta: meta,
-                    };
-                    tracing::info!("{display_data}");
+            let first_inactive = peers.partition_point(|(_key, peer)| peer_is_active(peer));
+            let mut peers = peers.into_iter();
+            if first_inactive == 0 {
+                tracing::info!("No active clients");
+            } else {
+                println!("Active clients ({first_inactive}):");
+                for (key, peer) in (&mut peers).take(first_inactive) {
+                    let key = PublicKey::from(key);
+                    if let Some(meta) = peers_meta.peer(&key) {
+                        let display_data = PeerListData {
+                            wg_peer: peer,
+                            peer_meta: meta,
+                        };
+                        println!("{display_data}");
+                    }
+                }
+                println!();
+            }
+            if peers.len() != 0 {
+                println!("Inactive clients ({}):", peers.len());
+                for (key, peer) in peers {
+                    let key = PublicKey::from(key);
+                    if let Some(meta) = peers_meta.peer(&key) {
+                        let display_data = PeerListData {
+                            wg_peer: peer,
+                            peer_meta: meta,
+                        };
+                        println!("{display_data}");
+                    }
                 }
             }
         }
@@ -291,6 +315,17 @@ fn run() -> Result<(), snafu::Whatever> {
     Ok(())
 }
 
+fn peer_is_active(peer: &defguard_wireguard_rs::host::Peer) -> bool {
+    peer.last_handshake
+        .map(|st| {
+            const HALF_AN_HOUR: Duration = Duration::from_secs(30 * 60);
+            st.elapsed()
+                .map(|elapsed| elapsed < HALF_AN_HOUR)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+
 struct PeerListData<'a> {
     wg_peer: &'a defguard_wireguard_rs::host::Peer,
     peer_meta: &'a PeerMeta,
@@ -302,8 +337,17 @@ impl std::fmt::Display for PeerListData<'_> {
         let key = &self.peer_meta.public_key;
         let name = &self.peer_meta.name;
         let ip = &self.peer_meta.ip;
-        let last_handshake = self.wg_peer.last_handshake.map(time::OffsetDateTime::from);
-
+        let last_handshake = self
+            .wg_peer
+            .last_handshake
+            .and_then(|st| {
+                if st == std::time::SystemTime::UNIX_EPOCH {
+                    None
+                } else {
+                    Some(st)
+                }
+            })
+            .map(time::OffsetDateTime::from);
         write!(
             f,
             "Client key: {key}\n\
@@ -317,6 +361,9 @@ impl std::fmt::Display for PeerListData<'_> {
             "\n\
              {IDENT}Ip: {ip}"
         )?;
+        if let Some(endpoint) = self.wg_peer.endpoint {
+            write!(f, "\n{IDENT}Endpoint: {endpoint}")?;
+        }
         if let Some(last_handshake) = last_handshake {
             let now = time::OffsetDateTime::now_utc();
             let elapsed = humantime::Duration::from(Duration::from_secs(
