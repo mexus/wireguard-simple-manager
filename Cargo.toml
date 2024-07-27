@@ -1,6 +1,6 @@
 [package]
 name = "wireguard-simple-manager"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT/Apache-2.0"
 
@@ -25,3 +25,5 @@ display-error-chain = "0.2.0"
 time = "0.3.36"
 humantime = "2.1.0"
 typed-builder = "0.19.1"
+reqwest = { version = "0.12.5", default-features = false }
+tokio = { version = "1.39.2", features = ["rt", "net", "time"] }

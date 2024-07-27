@@ -10,7 +10,9 @@ pub struct Config {
     pub name: String,
 
     /// External VPN IP or DNS address.
-    pub external_address: String,
+    ///
+    /// If not set, the guessed external IP address is used instead.
+    pub external_address: Option<String>,
 
     /// External VPN port. If not set, the output port is extracted from the
     /// wireguard interface information.
