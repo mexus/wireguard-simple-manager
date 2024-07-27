@@ -245,6 +245,7 @@ fn run() -> Result<(), snafu::Whatever> {
                     .preshared_key(Some(preshared_key.clone()))
                     .ip(ip)
                     .server_public_key(host_public_key)
+                    .listen_port(host.listen_port)
                     .build();
 
             peers_meta
