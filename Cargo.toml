@@ -1,13 +1,12 @@
 [package]
 name = "wireguard-simple-manager"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT/Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-base64_21 = {version = "0.21", package = "base64"}
 base64 = "0.22"
 camino = { version = "1.1.7", features = ["serde1"] }
 clap = { version = "4.5.9", features = ["derive"] }
