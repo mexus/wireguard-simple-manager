@@ -24,7 +24,7 @@ tempfile = "3.10.1"
 display-error-chain = "0.2.0"
 time = "0.3.36"
 humantime = "2.1.0"
-typed-builder = "0.19.1"
+typed-builder = "0.20.0"
 reqwest = { version = "0.12.5", default-features = false }
 tokio = { version = "1.39.2", features = ["rt", "net", "time"] }
 icu_casemap = "1.5.1"
