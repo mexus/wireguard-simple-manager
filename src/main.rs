@@ -4,6 +4,7 @@ use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use display_error_chain::DisplayErrorChain;
+use owo_colors::OwoColorize;
 use snafu::{OptionExt, ResultExt};
 use wireguard_simple_manager::{
     config::Config,
@@ -163,10 +164,12 @@ fn run() -> Result<(), snafu::Whatever> {
             });
             let first_inactive = peers.partition_point(|(_key, peer)| peer_is_active(peer));
             let mut peers = peers.into_iter();
-            if first_inactive == 0 {
+            if peers.len() == 0 {
+                tracing::warn!("No clients");
+            } else if first_inactive == 0 {
                 tracing::info!("No active clients");
             } else {
-                println!("Active clients ({first_inactive}):");
+                println!("{} ({first_inactive}):", "Active clients".bold());
                 for (key, peer) in (&mut peers).take(first_inactive) {
                     let key = PublicKey::from(key);
                     if let Some(meta) = peers_meta.peer(&key) {
@@ -180,7 +183,7 @@ fn run() -> Result<(), snafu::Whatever> {
                 println!();
             }
             if peers.len() != 0 {
-                println!("Inactive clients ({}):", peers.len());
+                println!("{} ({}):", "Inactive clients".bold(), peers.len());
                 for (key, peer) in peers {
                     let key = PublicKey::from(key);
                     if let Some(meta) = peers_meta.peer(&key) {
@@ -295,7 +298,7 @@ fn run() -> Result<(), snafu::Whatever> {
                 if let Err(e) = peers_meta.save().whatever_context("Save meta information") {
                     tracing::warn!(
                         "Unable to save the meta. \
-                     Remove the peer from the wireguard"
+                         Remove the peer from the wireguard"
                     );
                     if let Err(e) = api.remove_peer(&public_key.into()) {
                         tracing::error!(
@@ -376,8 +379,10 @@ impl std::fmt::Display for PeerListData<'_> {
             .map(time::OffsetDateTime::from);
         write!(
             f,
-            "┏Client key: {key}\n\
-             {IDENT}Name: {name}"
+            "┏Client key: {}\n\
+             {IDENT}Name: {}",
+            key.magenta(),
+            name.cyan()
         )?;
         if let Some(comment) = &self.peer_meta.comment {
             write!(f, " ({comment})")?;
@@ -385,7 +390,8 @@ impl std::fmt::Display for PeerListData<'_> {
         write!(
             f,
             "\n\
-             {IDENT}Ip: {ip}"
+             {IDENT}Ip: {}",
+            ip.green().bold(),
         )?;
         if let Some(endpoint) = self.wg_peer.endpoint {
             write!(f, "\n{IDENT}Endpoint: {endpoint}")?;
