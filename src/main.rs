@@ -47,7 +47,12 @@ enum Commands {
         dry_run: bool,
     },
     /// Lists the wireguard peers.
-    ListPeers,
+    ListPeers {
+        /// When set, the users will be filtered by names containing this value
+        /// (case insensitive).
+        #[clap(long)]
+        name: Option<String>,
+    },
     /// Removes a wireguard peer.
     RemovePeer {
         /// Public key of the peer to remove.
@@ -131,8 +136,25 @@ fn run() -> Result<(), snafu::Whatever> {
     }
 
     match command {
-        Commands::ListPeers => {
-            let mut peers = host.peers.iter().collect::<Vec<_>>();
+        Commands::ListPeers { name } => {
+            let mut peers = if let Some(filter) = name {
+                let cm = icu_casemap::CaseMapper::new();
+                let filter = cm.fold_string(&filter);
+                host.peers
+                    .iter()
+                    .filter(|(key, _peer)| {
+                        let key = PublicKey::from(*key);
+                        if let Some(meta) = peers_meta.peer(&key) {
+                            let peer_name = cm.fold_string(&meta.name);
+                            peer_name.contains(&filter)
+                        } else {
+                            false
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                host.peers.iter().collect::<Vec<_>>()
+            };
             peers.sort_unstable_by_key(|(_key, peer)| {
                 (
                     !peer_is_active(peer),
