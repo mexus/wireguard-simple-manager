@@ -11,6 +11,7 @@ use crate::wg_key::{PresharedKey, PrivateKey, PublicKey};
 pub struct ConfigFilePrinter<'a> {
     global_config: &'a crate::config::Config,
     listen_port: u16,
+    endpoint_name: &'a str,
     client_name: &'a str,
     client_comment: Option<&'a str>,
     ip: IpAddr,
@@ -24,7 +25,7 @@ impl<'a> std::fmt::Display for ConfigFilePrinter<'a> {
         let vpn_name = &self.global_config.name;
         let dns = self.global_config.dns.as_deref();
         let network_mask = &self.global_config.network_mask;
-        let endpoint_name = &self.global_config.external_address;
+        let endpoint_name = self.endpoint_name;
         let endpoint_port = self.global_config.external_port.unwrap_or(self.listen_port);
 
         let ConfigFilePrinter {
@@ -90,7 +91,7 @@ mod test {
 
         let network_config = crate::config::Config {
             name: "VPN human-readable name".into(),
-            external_address: "vpn.example.com".into(),
+            external_address: None,
             external_port: Some(54321),
             peers: "/path/to/the/peers".into(),
             dns: Some("192.168.0.1".into()),
@@ -109,6 +110,7 @@ mod test {
             .ip("192.168.0.115".parse().unwrap())
             .server_public_key(server_public_key)
             .listen_port(1)
+            .endpoint_name("vpn.example.com")
             .build();
         assert_eq!(
             printer.to_string(),

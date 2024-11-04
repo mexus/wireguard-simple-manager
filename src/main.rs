@@ -236,6 +236,12 @@ fn run() -> Result<(), snafu::Whatever> {
                 public_key,
             };
 
+            let external_address =
+                config.external_address.clone().map(Ok).unwrap_or_else(|| {
+                    wireguard_simple_manager::guess_address::guess_ip_address()
+                        .map(|ip| ip.to_string())
+                        .whatever_context("Can't guess external IP")
+                })?;
             let config_file_printer =
                 wireguard_simple_manager::client_config::ConfigFilePrinter::builder()
                     .global_config(&config)
@@ -246,6 +252,7 @@ fn run() -> Result<(), snafu::Whatever> {
                     .ip(ip)
                     .server_public_key(host_public_key)
                     .listen_port(host.listen_port)
+                    .endpoint_name(&external_address)
                     .build();
 
             peers_meta
