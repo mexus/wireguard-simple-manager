@@ -12,8 +12,9 @@ pub struct Config {
     /// External VPN IP or DNS address.
     pub external_address: String,
 
-    /// External VPN port.
-    pub external_port: u32,
+    /// External VPN port. If not set, the output port is extracted from the
+    /// wireguard interface information.
+    pub external_port: Option<u16>,
 
     /// Path to the peers meta information.
     pub peers: Utf8PathBuf,
