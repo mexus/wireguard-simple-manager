@@ -37,7 +37,7 @@ enum Commands {
         #[clap(long)]
         ip: Option<IpAddr>,
         /// Output file name where peer information is stored. If not provided,
-        /// the file name is derived from the network name and client's name.
+        /// the file name is derived from the network name.
         #[clap(short, long)]
         output: Option<Utf8PathBuf>,
 
@@ -132,11 +132,7 @@ fn run() -> Result<(), snafu::Whatever> {
 
     match command {
         Commands::ListPeers => {
-            let mut peers = host
-                .peers
-                .iter()
-                .map(|(key, peer)| (key, peer))
-                .collect::<Vec<_>>();
+            let mut peers = host.peers.iter().collect::<Vec<_>>();
             peers.sort_unstable_by_key(|(_key, peer)| {
                 (
                     !peer_is_active(peer),
@@ -197,8 +193,8 @@ fn run() -> Result<(), snafu::Whatever> {
                 output_stdout = std::io::stdout();
                 &mut output_stdout
             } else {
-                let output_path = output
-                    .unwrap_or_else(|| Utf8PathBuf::from(format!("{}_{name}.conf", config.name)));
+                let output_path =
+                    output.unwrap_or_else(|| Utf8PathBuf::from(format!("{}.conf", config.name)));
                 output_file = std::fs::OpenOptions::new()
                     .mode(0o400)
                     .write(true)
