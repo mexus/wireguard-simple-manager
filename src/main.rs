@@ -67,6 +67,9 @@ enum Commands {
     /// Interactive config generation.
     #[command(name = "gen")]
     GenerateConfig,
+    /// Interactively populate the peers from wireguard information.
+    #[command(name = "populate")]
+    PopulatePeers,
 }
 
 #[test]
@@ -196,6 +199,8 @@ fn run() -> Result<(), snafu::Whatever> {
         .read_interface_data()
         .whatever_context("Can't read interface data")?;
 
+    let mut to_populate = vec![];
+
     for (key, peer) in &host.peers {
         let key = PublicKey::from(key);
         if let Some(meta) = peers_meta.peer(&key) {
@@ -212,10 +217,12 @@ fn run() -> Result<(), snafu::Whatever> {
                      peer.allowed_ips
                 );
             }
+        } else if matches!(command, Commands::PopulatePeers) {
+            to_populate.push((key, peer.endpoint));
         } else {
             tracing::warn!(
                 "Peer {key} is registered within the wireguard but \
-                 meta information on it is missing"
+             meta information on it is missing"
             );
         }
     }
@@ -231,6 +238,54 @@ fn run() -> Result<(), snafu::Whatever> {
     }
 
     match command {
+        Commands::PopulatePeers => {
+            if to_populate.is_empty() {
+                eprintln!("All the peers in the wireguard are already present in the peers file");
+            }
+            for (key, maybe_endpoint) in to_populate {
+                use inquire::{
+                    validator::{Validation, ValueRequiredValidator},
+                    Text,
+                };
+                eprintln!("Who is the peer corresponding to the key {key} ?");
+                let name = Text::new("User name")
+                    .with_validator(ValueRequiredValidator::new("Name is required"))
+                    .prompt()
+                    .whatever_context("Prompt error")?;
+                let comment = Text::new("Comment (optional)")
+                    .prompt_skippable()
+                    .whatever_context("Prompt error")?
+                    .filter(|s| !s.is_empty());
+                let maybe_endpoint = maybe_endpoint.map(|s| s.ip().to_string());
+                let mut prompt = Text::new("Peer's IP address").with_validator(|ip: &str| {
+                    Ok(if ip.parse::<IpAddr>().is_ok() {
+                        Validation::Valid
+                    } else {
+                        Validation::Invalid(inquire::validator::ErrorMessage::Custom(
+                            "Invalid IP address".into(),
+                        ))
+                    })
+                });
+                if let Some(endpoint) = &maybe_endpoint {
+                    prompt = prompt.with_initial_value(endpoint);
+                }
+                let ip = prompt
+                    .prompt()
+                    .whatever_context("Prompt error")?
+                    .parse::<IpAddr>()
+                    .whatever_context("Invalid IP address")?;
+                let meta = PeerMeta {
+                    public_key: key,
+                    name,
+                    comment,
+                    ip,
+                };
+                peers_meta
+                    .add_peer(meta)
+                    .expect("We explicitly add only the non-existent peers");
+                peers_meta.save().whatever_context("Can't save peers")?;
+            }
+        }
         Commands::GenerateConfig => unreachable!("Handled earlier"),
         Commands::ListPeers { name } => {
             let mut peers = if let Some(filter) = name {
