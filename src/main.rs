@@ -7,7 +7,7 @@ use display_error_chain::DisplayErrorChain;
 use owo_colors::OwoColorize;
 use snafu::{OptionExt, ResultExt};
 use wireguard_simple_manager::{
-    config::Config,
+    config::{parse_ip_mask, Config},
     ip_utils::{check_ip, next_ip},
     peers_meta::{PeerMeta, PeersMeta},
     wg_key::{PresharedKey, PrivateKey, PublicKey},
@@ -64,6 +64,9 @@ enum Commands {
         #[clap(long)]
         dry_run: bool,
     },
+    /// Interactive config generation.
+    #[command(name = "gen")]
+    GenerateConfig,
 }
 
 #[test]
@@ -83,6 +86,97 @@ fn run() -> Result<(), snafu::Whatever> {
         .pretty()
         .with_max_level(tracing::Level::INFO)
         .init();
+
+    if matches!(command, Commands::GenerateConfig) {
+        use inquire::{validator::*, Text};
+        // Interactive config generation.
+        eprintln!("Interactive config at '{config}' generation");
+        let interface_name = Text::new("Name of the wireguard interface")
+            .with_validator(ValueRequiredValidator::new("Can't be empty"))
+            .with_validator(MaxLengthValidator::new(16))
+            .with_validator(|input: &str| {
+                if input.contains(char::is_whitespace) {
+                    Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Whitespace not allowed".into(),
+                    )))
+                } else if input.contains('/') {
+                    Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Slash not allowed".into(),
+                    )))
+                } else {
+                    Ok(Validation::Valid)
+                }
+            })
+            .prompt()
+            .whatever_context("Prompt error")?;
+        let name = Text::new("Name of the network")
+            .with_validator(ValueRequiredValidator::new("Can't be empty"))
+            .prompt()
+            .whatever_context("Prompt error")?;
+        let network_mask = Text::new("VPN network mask")
+            .with_validator(ValueRequiredValidator::new("Can't be empty"))
+            .with_validator(|input: &str| {
+                Ok(if let Err(e) = parse_ip_mask(input) {
+                    Validation::Invalid(ErrorMessage::Custom(e.to_string()))
+                } else {
+                    Validation::Valid
+                })
+            })
+            .prompt()
+            .whatever_context("Prompt error")?;
+        let network_mask =
+            parse_ip_mask(&network_mask).whatever_context("Network mask parse failed")?;
+        let ext_address = Text::new("External VPN IP or DNS address (optional)")
+            .prompt_skippable()
+            .whatever_context("Prompt error")?
+            .filter(|x| !x.is_empty());
+
+        let ext_port = Text::new("External VPN port (optional)")
+            .with_validator(|input: &str| {
+                Ok(if input.is_empty() || input.parse::<u16>().is_ok() {
+                    Validation::Valid
+                } else {
+                    Validation::Invalid("Must be u16".into())
+                })
+            })
+            .prompt_skippable()
+            .whatever_context("Prompt error")?
+            .map(|s| s.parse())
+            .transpose()
+            .whatever_context("Can't parse external port")?;
+
+        let peers_path = Text::new("Path to the peers meta information TOML")
+            .with_validator(ValueRequiredValidator::new("Can't be empty"))
+            .prompt()
+            .map(Utf8PathBuf::from)
+            .whatever_context("Prompt error")?;
+
+        let dns = Text::new("DNS server for the network (optional)")
+            .prompt_skippable()
+            .whatever_context("Prompt error")?
+            .filter(|x| !x.is_empty());
+
+        if let Some(dir) = peers_path.parent() {
+            std::fs::create_dir_all(dir)
+                .whatever_context("Can't create directory for the peers file")?;
+        }
+
+        let config_str = toml::to_string_pretty(
+            &(Config {
+                name,
+                external_address: ext_address,
+                external_port: ext_port,
+                peers: peers_path,
+                dns,
+                interface_name,
+                network_mask,
+            }),
+        )
+        .whatever_context("Can't serialize configuration")?;
+        std::fs::write(config, config_str).whatever_context("Can't save configuration")?;
+
+        return Ok(());
+    }
 
     let config: Config = {
         let data =
@@ -137,6 +231,7 @@ fn run() -> Result<(), snafu::Whatever> {
     }
 
     match command {
+        Commands::GenerateConfig => unreachable!("Handled earlier"),
         Commands::ListPeers { name } => {
             let mut peers = if let Some(filter) = name {
                 let cm = icu_casemap::CaseMapper::new();

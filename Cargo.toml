@@ -29,3 +29,4 @@ reqwest = { version = "0.12.5", default-features = false }
 tokio = { version = "1.39.2", features = ["rt", "net", "time"] }
 icu_casemap = "1.5.1"
 owo-colors = { version = "4.1.0", features = ["supports-colors"] }
+inquire = "0.7.5"
